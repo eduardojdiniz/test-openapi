@@ -1,0 +1,1582 @@
+openapi: 3.0.3
+info:
+  title: CardMint
+  version: '1'
+  description: |
+    ## Design
+    ## Decisions
+  contact:
+    name: Developers Relationship Team
+    url: https://developers.sideup.com/
+    email: developers@sideup.com
+  license:
+    name: Unlicensed
+    url: https://developers.sideup.com/
+servers:
+  - url: https://api.dev.sideup.com/cardmint/v1
+    description: Development server
+  - url: https://api.stg.sideup.com/cardmint/v1
+    description: Staging server
+  - url: https://api.sideup.com/cardmint/v1
+    description: Production server
+security:
+  - api_key: []
+tags:
+  - name: Cardholders
+    description: Cardholders maintenance
+  - name: Cards
+    description: Cards maintenance
+  - name: Common
+    description: General use endpoints
+  - name: Domains
+    description: Endpoints to manage data domains
+paths:
+  /:
+    get:
+      summary: Home page for this API
+      description: |
+        Home page for this API with links to documentation and other resources.
+      operationId: getHome
+      tags:
+        - Common
+      responses:
+        '200':
+          description: List of all registered accounts
+          headers:
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit.v1'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining.v1'
+            RateLimit-Reset:
+              $ref: '#/components/headers/RateLimit-Reset.v1'
+        '400':
+          $ref: '#/components/responses/400BadRequest.v1'
+        '401':
+          $ref: '#/components/responses/401Unauthorized.v1'
+        '403':
+          $ref: '#/components/responses/403Forbidden.v1'
+        '404':
+          $ref: '#/components/responses/404NotFound.v1'
+        '406':
+          $ref: '#/components/responses/406NotAcceptable.v1'
+        '429':
+          $ref: '#/components/responses/429TooManyRequests.v1'
+        '500':
+          $ref: '#/components/responses/500InternalServerError.v1'
+        default:
+          $ref: '#/components/responses/500InternalServerError.v1'
+  /health:
+    get:
+      summary: Health status of this API
+      description: |
+        Health status of this API.
+
+        If It is healthy with degradation, for example without a working cache, but properly delivering responses,
+        it should return status 200 with response body field `status` of `warn`.
+        This is so that simple balancers and gateways keep the service in operation, while more advanced ones may reduce the load on the faulty one.
+      operationId: getHealth
+      tags:
+        - Common
+      responses:
+        '200':
+          description: States that this API is healthy, even if with converns.
+          headers:
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit.v1'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining.v1'
+            RateLimit-Reset:
+              $ref: '#/components/headers/RateLimit-Reset.v1'
+          content:
+            application/vnd.health+json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck.v1'
+              examples:
+                healthy:
+                  summary: Healthy service
+                  value:
+                    status: pass
+                degraded:
+                  summary: Degraded service with a cache failure, but operational
+                  value:
+                    status: warn
+                    output: Cache connection timeout
+        default:
+          description: States that this API is unhealthy
+          headers:
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit.v1'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining.v1'
+            RateLimit-Reset:
+              $ref: '#/components/headers/RateLimit-Reset.v1'
+          content:
+            application/vnd.health+json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck.v1'
+              example:
+                status: fail
+                output: Database connection timeout
+  /cardholders:
+    get:
+      description: |-
+        <p>Returns a list of <code>Cardholder</code> objects sorted in descending order by creation date, with the most recently created object appearing first. This endpoint allows you to filter cardholders using a combination of inclusive and exclusive filters:</p> <ul>
+          <li><b>Inclusive Filters:</b> The <code>email</code>, <code>phone</code>, and <code>cardholder_id</code> filters are inclusive, meaning that if any of these are provided, the response will include cardholders that match <b>any</b> of the specified emails, phone numbers, or IDs. The filter operates as an "OR" condition across these fields.</li>
+          <li><b>Exclusive Filters:</b> The <code>status</code>, <code>type</code>, and <code>issuer</code> filters are exclusive, meaning that all provided criteria must be met. The filter operates as an "AND" condition across these fields.</li>
+        </ul> <p>For example, if both an email and a phone number are provided, cardholders matching either the email <b>or</b> the phone number will be returned. If additional filters such as status, type, or issuer are specified, the cardholders must also meet all of those criteria to be included in the response.</p>
+      operationId: ListCardholders
+      tags:
+        - Cardholders
+      parameters:
+        - $ref: '#/components/parameters/Skip.v1'
+        - $ref: '#/components/parameters/Limit.v1'
+        - $ref: '#/components/parameters/SortOrder.v1'
+        - name: sort_key
+          description: Field used for sorting
+          in: query
+          schema:
+            title: SortKey
+            type: string
+            enum:
+              - created_at
+              - updated_at
+            default: created_at
+            example: created_at
+        - $ref: '#/components/parameters/CreatedAt.v1'
+        - name: cardholder_id
+          in: query
+          required: false
+          examples:
+            example1:
+              summary: Specific cardholder
+              value: 01916ae1-d0ab-7a6d-a564-f14a29664f89
+            example2:
+              summary: Multiple cardholders
+              value:
+                - 01916ae1-d0ab-7a6d-a564-f14a29664f89
+                - 01916ae1-d0ab-7a6d-a564-f14a29664f89
+          schema:
+            title: Array[CardholderId]
+            type: array
+            items:
+              $ref: '#/components/schemas/Uuid.v1'
+          style: form
+          explode: false
+          description: |
+            Only return cardholders that have the given IDs.
+        - name: email
+          in: query
+          required: false
+          examples:
+            example1:
+              summary: Cardholders with email example1@example.com
+              value:
+                - example1@example.com
+            example2:
+              summary: Cardholders with email example1@example.com and example2@example.com
+              value:
+                - example1@example.com
+                - example2@example.com
+          schema:
+            title: Array[Email]
+            type: array
+            items:
+              type: string
+              format: email
+              example: example1@example.com
+          style: form
+          explode: false
+          description: |
+            Only return cardholders that have one of the given email addresses.
+        - name: phone
+          in: query
+          required: false
+          examples:
+            example1:
+              summary: Cardholders with phone number +1234567890
+              value:
+                - '+1234567890'
+            example2:
+              summary: Cardholders with phone number +1234567890 and +0987654321
+              value:
+                - '+1234567890'
+                - '+0987654321'
+          schema:
+            title: Array[Phone]
+            type: array
+            items:
+              type: string
+              pattern: ^\+?[1-9]\d{1,14}$
+              example: '+1234567890'
+          style: form
+          explode: false
+          description: |
+            Only return cardholders that have one of the given phone numbers, in E.164 format.
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/CardholderStatus.v1'
+          description: |
+            Only return cardholders that have the given status. One of `active`, `inactive`, or `blocked`.
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/CardholderType.v1'
+          description: |
+            Only return cardholders of a given type. One of `individual`, or `company`.
+        - name: issuer
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/CardholderIssuer.v1'
+          description: |
+            Only return cardholders from the given issuer.
+      responses:
+        '200':
+          description: List of `Cardholder` objects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cardholders:
+                    title: Array[Cardholder]
+                    type: array
+                    minItems: 0
+                    maxItems: 255
+                    items:
+                      $ref: '#/components/schemas/CardholderResponse.v1'
+          headers:
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit.v1'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining.v1'
+            RateLimit-Reset:
+              $ref: '#/components/headers/RateLimit-Reset.v1'
+        '400':
+          $ref: '#/components/responses/400BadRequest.v1'
+        '401':
+          $ref: '#/components/responses/401Unauthorized.v1'
+        '403':
+          $ref: '#/components/responses/403Forbidden.v1'
+        '404':
+          $ref: '#/components/responses/404NotFound.v1'
+        '406':
+          $ref: '#/components/responses/406NotAcceptable.v1'
+        '429':
+          $ref: '#/components/responses/429TooManyRequests.v1'
+        '500':
+          $ref: '#/components/responses/500InternalServerError.v1'
+        default:
+          $ref: '#/components/responses/500InternalServerError.v1'
+    post:
+      description: |
+        <p>Creates a new <code>Cardholder</code> object that can be
+        issued cards.</p>
+      operationId: CreateCardholder
+      tags:
+        - Cardholders
+      parameters:
+        - name: issuer
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/CardholderIssuer.v1'
+          description: The issuer of the cardholder
+      requestBody:
+        required: true
+        description: Cardholder object to create
+        content:
+          application/json:
+            schema:
+              type: object
+              addionalProperties: false
+              $ref: '#/components/schemas/CreateCardholderRequest.v1'
+      responses:
+        '200':
+          description: Create Cardholder
+          content:
+            application/json:
+              schema:
+                title: Cardholder
+                type: object
+                required:
+                  - data
+                additionalProperties: false
+                $ref: '#/components/schemas/CardholderResponse.v1'
+          headers:
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit.v1'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining.v1'
+            RateLimit-Reset:
+              $ref: '#/components/headers/RateLimit-Reset.v1'
+        '400':
+          $ref: '#/components/responses/400BadRequest.v1'
+        '401':
+          $ref: '#/components/responses/401Unauthorized.v1'
+        '403':
+          $ref: '#/components/responses/403Forbidden.v1'
+        '404':
+          $ref: '#/components/responses/404NotFound.v1'
+        '406':
+          $ref: '#/components/responses/406NotAcceptable.v1'
+        '409':
+          $ref: '#/components/responses/409Conflict.v1'
+        '415':
+          $ref: '#/components/responses/415UnsupportedMediaType.v1'
+        '429':
+          $ref: '#/components/responses/429TooManyRequests.v1'
+        '500':
+          $ref: '#/components/responses/500InternalServerError.v1'
+        default:
+          $ref: '#/components/responses/500InternalServerError.v1'
+  /cardholders/{cardholder_id}:
+    parameters:
+      - name: cardholder_id
+        description: |
+          cardholder identification, being a unique and immutable
+          identifier used to identify the cardholder resource. This
+          identifier has no meaning to the cardholder owner.
+        in: path
+        required: true
+        example: de283d1c-2d64-4c61-a3b5-896bfac999dd
+        schema:
+          $ref: '#/components/schemas/Uuid.v1'
+    get:
+      description: <p>Returns a <code>Cardholder</code> object.</p>
+      operationId: RetrieveCardholder
+      tags:
+        - Cardholders
+      responses:
+        '200':
+          description: A `Cardholder` object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardholderResponse.v1'
+          headers:
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit.v1'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining.v1'
+            RateLimit-Reset:
+              $ref: '#/components/headers/RateLimit-Reset.v1'
+        '400':
+          $ref: '#/components/responses/400BadRequest.v1'
+        '401':
+          $ref: '#/components/responses/401Unauthorized.v1'
+        '403':
+          $ref: '#/components/responses/403Forbidden.v1'
+        '404':
+          $ref: '#/components/responses/404NotFound.v1'
+        '429':
+          $ref: '#/components/responses/429TooManyRequests.v1'
+        '500':
+          $ref: '#/components/responses/500InternalServerError.v1'
+        default:
+          $ref: '#/components/responses/500InternalServerError.v1'
+    put:
+      description: |
+        <p> Updates the given <code>Cardholder</code> object by setting the values
+        of the parameters passed. Any parameters not provided will be left
+        unchanged.</p>
+      operationId: UpdateCardholder
+      tags:
+        - Cardholders
+      requestBody:
+        required: true
+        description: Cardholder object representing the cardholder to update.
+        content:
+          application/json:
+            schema:
+              type: object
+              addionalProperties: false
+              $ref: '#/components/schemas/UpdateCardholderRequest.v1'
+      responses:
+        '200':
+          description: Update Cardholder
+          content:
+            application/json:
+              schema:
+                title: Cardholder
+                type: object
+                required:
+                  - data
+                additionalProperties: false
+                $ref: '#/components/schemas/CardholderResponse.v1'
+          headers:
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit.v1'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining.v1'
+            RateLimit-Reset:
+              $ref: '#/components/headers/RateLimit-Reset.v1'
+        '400':
+          $ref: '#/components/responses/400BadRequest.v1'
+        '401':
+          $ref: '#/components/responses/401Unauthorized.v1'
+        '403':
+          $ref: '#/components/responses/403Forbidden.v1'
+        '404':
+          $ref: '#/components/responses/404NotFound.v1'
+        '406':
+          $ref: '#/components/responses/406NotAcceptable.v1'
+        '409':
+          $ref: '#/components/responses/409Conflict.v1'
+        '415':
+          $ref: '#/components/responses/415UnsupportedMediaType.v1'
+        '429':
+          $ref: '#/components/responses/429TooManyRequests.v1'
+        '500':
+          $ref: '#/components/responses/500InternalServerError.v1'
+        default:
+          $ref: '#/components/responses/500InternalServerError.v1'
+    delete:
+      description: <p>Deletes a <code>Cardholder</code> object, identified by its unique <code>cardholder_id</code>. This action is irreversible and will result in the permanent deletion of the cardholder.</p>
+      operationId: DeleteCardholder
+      tags:
+        - Cardholders
+      responses:
+        '204':
+          description: The cardholder was successfully deleted and no content is returned.
+          headers:
+            RateLimit-Limit:
+              $ref: '#/components/headers/RateLimit-Limit.v1'
+            RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimit-Remaining.v1'
+            RateLimit-Reset:
+              $ref: '#/components/headers/RateLimit-Reset.v1'
+        '400':
+          $ref: '#/components/responses/400BadRequest.v1'
+        '401':
+          $ref: '#/components/responses/401Unauthorized.v1'
+        '403':
+          $ref: '#/components/responses/403Forbidden.v1'
+        '404':
+          $ref: '#/components/responses/404NotFound.v1'
+        '409':
+          $ref: '#/components/responses/409Conflict.v1'
+        '429':
+          $ref: '#/components/responses/429TooManyRequests.v1'
+        '500':
+          $ref: '#/components/responses/500InternalServerError.v1'
+        default:
+          $ref: '#/components/responses/500InternalServerError.v1'
+components:
+  securitySchemes:
+    api_key:
+      description: API KEY authentication method.
+      type: apiKey
+      name: X-API-Key
+      in: header
+  schemas:
+    ProblemDetails.v1:
+      title: Problem Details for HTTP APIs
+      description: Definition of [RFC7807](https://tools.ietf.org/html/rfc7807) problem detail
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          description: |
+            A URI reference [RFC3986](https://datatracker.ietf.org/doc/html/rfc3986) that identifies the
+            problem type.  This specification encourages that, when
+            dereferenced, it provide human-readable documentation for the
+            problem type (e.g., using HTML [W3C.REC-html5-20141028](https://datatracker.ietf.org/doc/html/rfc7807#ref-W3C.REC-html5-20141028)).  When
+            this member is not present, its value is assumed to be
+            "about:blank".
+          type: string
+          format: uri
+          minLength: 10
+          maxLength: 255
+          example: https://api.onne.place/messages/v1/500
+        title:
+          description: |
+            A short, human-readable summary of the problem
+            type.  It SHOULD NOT change from occurrence to occurrence of the
+            problem, except for purposes of localization (e.g., using
+            proactive content negotiation; see [RFC7231](https://datatracker.ietf.org/doc/html/rfc7231#section-3.4), Section 3.4).
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: ^\S(.*\S)?$
+          example: Error loading account data
+        status:
+          description: |
+            The HTTP status code ([RFC7231](https://datatracker.ietf.org/doc/html/rfc7231#section-6), Section 6)
+            generated by the origin server for this occurrence of the problem.
+          type: integer
+          format: int32
+          minimum: 100
+          maximum: 999
+          example: 500
+        detail:
+          description: |
+            A human-readable explanation specific to this
+            occurrence of the problem.
+          type: string
+          minLength: 1
+          maxLength: 512
+          pattern: ^\S(.*\S)?$
+          example: There was an internal error loading the account data requested
+        instance:
+          description: |
+            A URI reference that identifies the specific
+            occurrence of the problem.  It may or may not yield further
+            information if dereferenced.
+          type: string
+          format: uri
+          minLength: 10
+          maxLength: 255
+          example: https://api.onne.place/errors/v1/de283d1c-2d64-4c61-a3b5-896bfac999dd
+      required:
+        - title
+        - detail
+    HealthCheck.v1:
+      title: Health Check for HTTP APIs
+      description: Definition of [Draft Health Check](https://datatracker.ietf.org/doc/html/draft-inadarei-api-health-check) response data for health checks.
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          description: |
+            Indicates whether the service status is acceptable or not.
+            - pass: Service is healthy
+            - fail: Service is unhealthy
+            - warn: Service is healthy, with some concerns
+          type: string
+          enum:
+            - pass
+            - fail
+            - warn
+          example: pass
+        output:
+          type: string
+          pattern: .*
+          minLength: 1
+          maxLength: 255
+          example: Database connection timeout
+      required:
+        - status
+    Uuid.v1:
+      title: Uuid
+      description: |
+        Unique and immutable identifier used to identify a resource. This
+        identifier has no meaning to the resource owner.
+      type: string
+      format: uuid
+      minLength: 36
+      maxLength: 36
+      example: 01916ae1-d0ab-7a6d-a564-f14a29664f89
+    CardholderStatus.v1:
+      title: CardholderStatus
+      description: Specifies whether to permit authorizations on this cardholder's cards.
+      type: string
+      enum:
+        - active
+        - blocked
+        - inactive
+      example: active
+    CardholderType.v1:
+      title: CardholderStatus
+      description: One of `individual` or `company`.
+      type: string
+      enum:
+        - company
+        - individual
+      example: individual
+    CardholderIssuer.v1:
+      title: CardholderIssuer
+      type: string
+      description: The name of the external platform (e.g., stripe, marqeta)
+      enum:
+        - stripe
+        - marqeta
+        - paypal
+        - plaid
+      example: stripe
+    Address.v1:
+      description: |
+        Address.
+      title: Address
+      type: object
+      required:
+        - city
+        - country
+        - line1
+        - line2
+        - postal_code
+        - state
+      properties:
+        city:
+          description: City, district, suburb, town, or village.
+          maxLength: 5000
+          nullable: true
+          type: string
+        country:
+          description: Two-letter country code ([ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2)).
+          maxLength: 5000
+          nullable: true
+          type: string
+        line1:
+          description: Address line 1 (e.g., street, PO Box, or company name).
+          maxLength: 5000
+          nullable: true
+          type: string
+        line2:
+          description: Address line 2 (e.g., apartment, suite, unit, or building).
+          maxLength: 5000
+          nullable: true
+          type: string
+        postal_code:
+          description: ZIP or postal code.
+          maxLength: 5000
+          nullable: true
+          type: string
+        state:
+          description: State, county, province, or region.
+          maxLength: 5000
+          nullable: true
+          type: string
+    CardholderBillingInfo.v1:
+      title: CardholderBillingInformation
+      type: object
+      description: The cardholder's billing information.
+      properties:
+        address:
+          nullable: true
+          $ref: '#/components/schemas/Address.v1'
+      required:
+        - address
+    AuthorizedUserTermsofServiceAcceptance.v1:
+      title: AuthorizedUserTermsOfServiceAcceptance
+      type: object
+      description: Information about the authorized user's acceptance of the user terms
+      properties:
+        date:
+          description: The date the authorized user accepted the user terms
+          type: string
+          format: unix-time
+          nullable: true
+          example: 1600000000
+        ip:
+          description: The IP address of the authorized user when the user accepted the user terms
+          type: string
+          maxLength: 5000
+          nullable: true
+          example: 127.0.0.1
+        user_agent:
+          description: The user agent of the authorized user when the user accepted the user terms
+          type: string
+          maxLength: 5000
+          nullable: true
+          example: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36
+      required:
+        - date
+        - ip
+        - user_agent
+    DataOfBirth.v1:
+      title: DateOfBirth
+      type: object
+      description: Date of birth.
+      properties:
+        day:
+          description: The day of the month.
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 1
+          example: 1
+        month:
+          description: The month of the year.
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 1
+          example: 1
+        year:
+          description: The year.
+          type: integer
+          nullable: true
+          minimum: 1900
+          maximum: 9999
+          example: 2000
+      required:
+        - day
+        - month
+        - year
+    Document.v1:
+      title: Document
+      description: |
+        Document object.
+      type: object
+      properties:
+        id:
+          description: Unique identifier for the object.
+          type: string
+          format: uuid
+          minLength: 36
+          maxLength: 36
+          example: 01916ae1-d0ab-7a6d-a564-f14a29664f89
+        purpose:
+          description: |
+            Purpose of the document.
+          type: string
+          enum:
+            - identity_document
+          example: identity_document
+        size:
+          description: |
+            The size of the file in bytes.
+          type: integer
+          minimum: 0
+          example: 1024
+        url:
+          description: |
+            URL of the document.
+          type: string
+          format: uri
+          example: https://example.com/id_front.pdf
+        filetype:
+          description: |
+            File type of the document.
+          type: string
+          nullable: true
+          enum:
+            - jpeg
+            - png
+            - pdf
+          example: pdf
+        filename:
+          description: |
+            The name of the file.
+          type: string
+          nullable: true
+          maxLength: 500
+          example: id_front.pdf
+      required:
+        - id
+        - purpose
+        - size
+        - url
+        - filetype
+        - filename
+    IdVerificationDocument.v1:
+      title: IdVerificationDocument
+      type: object
+      description: Government issued ID document for verification
+      properties:
+        document:
+          type: object
+          description: The document to be uploaded
+          properties:
+            back:
+              $ref: '#/components/schemas/Document.v1'
+            front:
+              $ref: '#/components/schemas/Document.v1'
+      required:
+        - document
+    IndividualCardholderDetails.v1:
+      title: IndividualCardholderDetails
+      type: object
+      description: Additional information about a cardholder of type `individual`
+      properties:
+        card_issuing:
+          description: Information about the card issuing program associated with the cardholder
+          type: object
+          properties:
+            user_terms_acceptance:
+              $ref: '#/components/schemas/AuthorizedUserTermsofServiceAcceptance.v1'
+            dob:
+              $ref: '#/components/schemas/DataOfBirth.v1'
+            first_name:
+              description: The cardholder's first name
+              type: string
+              maxLength: 255
+              example: John
+            last_name:
+              description: The cardholder's last name
+              type: string
+              maxLength: 255
+              example: Doe
+            id_verifcation_document:
+              $ref: '#/components/schemas/IdVerificationDocument.v1'
+    MerchantCategory.v1:
+      title: MerchantCategory
+      description: Merchant category name
+      type: string
+      nullable: true
+      enum:
+        - ac_refrigeration_repair
+        - accounting_bookkeeping_services
+        - advertising_services
+        - agricultural_cooperative
+        - airlines_air_carriers
+        - airports_flying_fields
+        - ambulance_services
+        - amusement_parks_carnivals
+        - antique_reproductions
+        - antique_shops
+        - aquariums
+        - architectural_surveying_services
+        - art_dealers_and_galleries
+        - artists_supply_and_craft_shops
+        - auto_and_home_supply_stores
+        - auto_body_repair_shops
+        - auto_paint_shops
+        - auto_service_shops
+        - automated_cash_disburse
+        - automated_fuel_dispensers
+        - automobile_associations
+        - automotive_parts_and_accessories_stores
+        - automotive_tire_stores
+        - bail_and_bond_payments
+        - bakeries
+        - bands_orchestras
+        - barber_and_beauty_shops
+        - betting_casino_gambling
+        - bicycle_shops
+        - billiard_pool_establishments
+        - boat_dealers
+        - boat_rentals_and_leases
+        - book_stores
+        - books_periodicals_and_newspapers
+        - bowling_alleys
+        - bus_lines
+        - business_secretarial_schools
+        - buying_shopping_services
+        - cable_satellite_and_other_pay_television_and_radio
+        - camera_and_photographic_supply_stores
+        - candy_nut_and_confectionery_stores
+        - car_and_truck_dealers_new_used
+        - car_and_truck_dealers_used_only
+        - car_rental_agencies
+        - car_washes
+        - carpentry_services
+        - carpet_upholstery_cleaning
+        - caterers
+        - charitable_and_social_service_organizations_fundraising
+        - chemicals_and_allied_products
+        - child_care_services
+        - childrens_and_infants_wear_stores
+        - chiropodists_podiatrists
+        - chiropractors
+        - cigar_stores_and_stands
+        - civic_social_fraternal_associations
+        - cleaning_and_maintenance
+        - clothing_rental
+        - colleges_universities
+        - commercial_equipment
+        - commercial_footwear
+        - commercial_photography_art_and_graphics
+        - commuter_transport_and_ferries
+        - computer_network_services
+        - computer_programming
+        - computer_repair
+        - computer_software_stores
+        - computers_peripherals_and_software
+        - concrete_work_services
+        - construction_materials
+        - consulting_public_relations
+        - correspondence_schools
+        - cosmetic_stores
+        - counseling_services
+        - country_clubs
+        - courier_services
+        - court_costs
+        - credit_reporting_agencies
+        - cruise_lines
+        - dairy_products_stores
+        - dance_hall_studios_schools
+        - dating_escort_services
+        - dentists_orthodontists
+        - department_stores
+        - detective_agencies
+        - digital_goods_applications
+        - digital_goods_games
+        - digital_goods_large_volume
+        - digital_goods_media
+        - direct_marketing_catalog_merchant
+        - direct_marketing_combination_catalog_and_retail_merchant
+        - direct_marketing_inbound_telemarketing
+        - direct_marketing_insurance_services
+        - direct_marketing_other
+        - direct_marketing_outbound_telemarketing
+        - direct_marketing_subscription
+        - direct_marketing_travel
+        - discount_stores
+        - doctors
+        - door_to_door_sales
+        - drapery_window_covering_and_upholstery_stores
+        - drinking_places
+        - drug_stores_and_pharmacies
+        - drugs_drug_proprietaries_and_druggist_sundries
+        - dry_cleaners
+        - durable_goods
+        - duty_free_stores
+        - eating_places_restaurants
+        - educational_services
+        - electric_razor_stores
+        - electric_vehicle_charging
+        - electrical_parts_and_equipment
+        - electrical_services
+        - electronics_repair_shops
+        - electronics_stores
+        - elementary_secondary_schools
+        - emergency_services_gcas_visa_use_only
+        - employment_temp_agencies
+        - equipment_rental
+        - exterminating_services
+        - family_clothing_stores
+        - fast_food_restaurants
+        - financial_institutions
+        - fines_government_administrative_entities
+        - fireplace_fireplace_screens_and_accessories_stores
+        - floor_covering_stores
+        - florists
+        - florists_supplies_nursery_stock_and_flowers
+        - freezer_and_locker_meat_provisioners
+        - fuel_dealers_non_automotive
+        - funeral_services_crematories
+        - furniture_home_furnishings_and_equipment_stores_except_appliances
+        - furniture_repair_refinishing
+        - furriers_and_fur_shops
+        - general_services
+        - gift_card_novelty_and_souvenir_shops
+        - glass_paint_and_wallpaper_stores
+        - glassware_crystal_stores
+        - golf_courses_public
+        - government_licensed_horse_dog_racing_us_region_only
+        - government_licensed_online_casions_online_gambling_us_region_only
+        - government_owned_lotteries_non_us_region
+        - government_owned_lotteries_us_region_only
+        - government_services
+        - grocery_stores_supermarkets
+        - hardware_equipment_and_supplies
+        - hardware_stores
+        - health_and_beauty_spas
+        - hearing_aids_sales_and_supplies
+        - heating_plumbing_a_c
+        - hobby_toy_and_game_shops
+        - home_supply_warehouse_stores
+        - hospitals
+        - hotels_motels_and_resorts
+        - household_appliance_stores
+        - industrial_supplies
+        - information_retrieval_services
+        - insurance_default
+        - insurance_underwriting_premiums
+        - intra_company_purchases
+        - jewelry_stores_watches_clocks_and_silverware_stores
+        - landscaping_services
+        - laundries
+        - laundry_cleaning_services
+        - legal_services_attorneys
+        - luggage_and_leather_goods_stores
+        - lumber_building_materials_stores
+        - manual_cash_disburse
+        - marinas_service_and_supplies
+        - marketplaces
+        - masonry_stonework_and_plaster
+        - massage_parlors
+        - medical_and_dental_labs
+        - medical_dental_ophthalmic_and_hospital_equipment_and_supplies
+        - medical_services
+        - membership_organizations
+        - mens_and_boys_clothing_and_accessories_stores
+        - mens_womens_clothing_stores
+        - metal_service_centers
+        - miscellaneous
+        - miscellaneous_apparel_and_accessory_shops
+        - miscellaneous_auto_dealers
+        - miscellaneous_business_services
+        - miscellaneous_food_stores
+        - miscellaneous_general_merchandise
+        - miscellaneous_general_services
+        - miscellaneous_home_furnishing_specialty_stores
+        - miscellaneous_publishing_and_printing
+        - miscellaneous_recreation_services
+        - miscellaneous_repair_shops
+        - miscellaneous_specialty_retail
+        - mobile_home_dealers
+        - motion_picture_theaters
+        - motor_freight_carriers_and_trucking
+        - motor_homes_dealers
+        - motor_vehicle_supplies_and_new_parts
+        - motorcycle_shops_and_dealers
+        - motorcycle_shops_dealers
+        - music_stores_musical_instruments_pianos_and_sheet_music
+        - news_dealers_and_newsstands
+        - non_fi_money_orders
+        - non_fi_stored_value_card_purchase_load
+        - nondurable_goods
+        - nurseries_lawn_and_garden_supply_stores
+        - nursing_personal_care
+        - office_and_commercial_furniture
+        - opticians_eyeglasses
+        - optometrists_ophthalmologist
+        - orthopedic_goods_prosthetic_devices
+        - osteopaths
+        - package_stores_beer_wine_and_liquor
+        - paints_varnishes_and_supplies
+        - parking_lots_garages
+        - passenger_railways
+        - pawn_shops
+        - pet_shops_pet_food_and_supplies
+        - petroleum_and_petroleum_products
+        - photo_developing
+        - photographic_photocopy_microfilm_equipment_and_supplies
+        - photographic_studios
+        - picture_video_production
+        - piece_goods_notions_and_other_dry_goods
+        - plumbing_heating_equipment_and_supplies
+        - political_organizations
+        - postal_services_government_only
+        - precious_stones_and_metals_watches_and_jewelry
+        - professional_services
+        - public_warehousing_and_storage
+        - quick_copy_repro_and_blueprint
+        - railroads
+        - real_estate_agents_and_managers_rentals
+        - record_stores
+        - recreational_vehicle_rentals
+        - religious_goods_stores
+        - religious_organizations
+        - roofing_siding_sheet_metal
+        - secretarial_support_services
+        - security_brokers_dealers
+        - service_stations
+        - sewing_needlework_fabric_and_piece_goods_stores
+        - shoe_repair_hat_cleaning
+        - shoe_stores
+        - small_appliance_repair
+        - snowmobile_dealers
+        - special_trade_services
+        - specialty_cleaning
+        - sporting_goods_stores
+        - sporting_recreation_camps
+        - sports_and_riding_apparel_stores
+        - sports_clubs_fields
+        - stamp_and_coin_stores
+        - stationary_office_supplies_printing_and_writing_paper
+        - stationery_stores_office_and_school_supply_stores
+        - swimming_pools_sales
+        - t_ui_travel_germany
+        - tailors_alterations
+        - tax_payments_government_agencies
+        - tax_preparation_services
+        - taxicabs_limousines
+        - telecommunication_equipment_and_telephone_sales
+        - telecommunication_services
+        - telegraph_services
+        - tent_and_awning_shops
+        - testing_laboratories
+        - theatrical_ticket_agencies
+        - timeshares
+        - tire_retreading_and_repair
+        - tolls_bridge_fees
+        - tourist_attractions_and_exhibits
+        - towing_services
+        - trailer_parks_campgrounds
+        - transportation_services
+        - travel_agencies_tour_operators
+        - truck_stop_iteration
+        - truck_utility_trailer_rentals
+        - typesetting_plate_making_and_related_services
+        - typewriter_stores
+        - u_s_federal_government_agencies_or_departments
+        - uniforms_commercial_clothing
+        - used_merchandise_and_secondhand_stores
+        - utilities
+        - variety_stores
+        - veterinary_services
+        - video_amusement_game_supplies
+        - video_game_arcades
+        - video_tape_rental_stores
+        - vocational_trade_schools
+        - watch_jewelry_repair
+        - welding_repair
+        - wholesale_clubs
+        - wig_and_toupee_stores
+        - wires_money_orders
+        - womens_accessory_and_specialty_shops
+        - womens_ready_to_wear_stores
+        - wrecking_and_salvage_yards
+    SpendingLimits.v1:
+      type: object
+      title: SpendingLimits
+      description: Spending limits.
+      properties:
+        amount:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 999999999.99
+          example: 100
+        categories:
+          type: array
+          nullable: true
+          minItems: 0
+          maxItems: 297
+          items:
+            $ref: '#/components/schemas/MerchantCategory.v1'
+        interval:
+          type: string
+          enum:
+            - per_authorization
+            - daily
+            - weekly
+            - monthly
+            - yearly
+            - all_time
+          example: per_authorization
+      required:
+        - amount
+        - categories
+        - interval
+    SpendingControls.v1:
+      type: object
+      title: SpendingControls
+      description: Spending controls.
+      properties:
+        allowed_categories:
+          type: array
+          nullable: true
+          minItems: 0
+          maxItems: 297
+          items:
+            $ref: '#/components/schemas/MerchantCategory.v1'
+        allowed_merchant_countries:
+          type: string
+          enum:
+            - us
+            - uk
+        blocked_categories:
+          type: array
+          nullable: true
+          minItems: 0
+          maxItems: 297
+          items:
+            $ref: '#/components/schemas/MerchantCategory.v1'
+        blocked_merchant_countries:
+          type: string
+          nullable: true
+          enum:
+            - us
+            - uk
+        spending_limits:
+          type: array
+          nullable: true
+          minItems: 0
+          maxItems: 500
+          items:
+            anyOf:
+              - $ref: '#/components/schemas/SpendingLimits.v1'
+        spending_limits_currency:
+          type: string
+          enum:
+            - usd
+            - gbp
+          nullable: true
+      required:
+        - allowed_categories
+        - allowed_merchant_countries
+        - blocked_categories
+        - blocked_merchant_countries
+        - spending_limits
+        - spending_limits_currency
+    CardholderBase.v1:
+      title: CardholderBase
+      type: object
+      description: A `Cardholder` base object represents an individual or business entity who is issued cards.
+      properties:
+        name:
+          description: The cardholder's name. This will be printed on cards issued to them.
+          type: string
+          maxLength: 5000
+          example: John Doe
+        email:
+          description: The cardholder's email address.
+          type: string
+          format: email
+          maxLength: 5000
+          example: johndoe@example.com
+        phone_number:
+          description: The cardholder's phone number.
+          type: string
+          maxLength: 5000
+          example: '+14155551234'
+        billing:
+          $ref: '#/components/schemas/CardholderBillingInfo.v1'
+        individual_details:
+          type: object
+          nullable: true
+          anyOf:
+            - $ref: '#/components/schemas/IndividualCardholderDetails.v1'
+        status:
+          $ref: '#/components/schemas/CardholderStatus.v1'
+        type:
+          $ref: '#/components/schemas/CardholderType.v1'
+        spending_controls:
+          description: Rules that control spending across this cardholder's cards.
+          type: array
+          nullable: true
+          items:
+            anyOf:
+              - $ref: '#/components/schemas/SpendingControls.v1'
+    ExternalIntegration.v1:
+      type: object
+      title: ExternalIntegration
+      description: External platform resource linked to this cardholder
+      properties:
+        platform:
+          $ref: '#/components/schemas/CardholderIssuer.v1'
+        external_uuid:
+          type: string
+          maxLength: 500
+          description: A string linking to the resource on the external platform
+          example: abc123-unique-external-identifier-456xyz
+        description:
+          type: string
+          description: A description indicating the purpose or nature of the link to the external platform
+          example: Linked to the Stripe Issuing cardholder object
+    Timestamp.v1:
+      title: Timestamp
+      description: |
+        Date and time in ISO 8601 format (YYYY-MM-DDThh:mm:ss.sssZ).
+      type: string
+      format: date-time
+      minLength: 20
+      maxLength: 29
+      example: '2022-01-01T00:00:00.000Z'
+    CardholderResponse.v1:
+      title: CardholderResponse
+      type: object
+      description: A `Cardholder` object represents an individual or business entity who is issued cards.
+      allOf:
+        - $ref: '#/components/schemas/CardholderBase.v1'
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid.v1'
+        external_integrations:
+          type: array
+          title: Array[ExternalIntegration]
+          description: Links to external platform resources (e.g., `stripe`, `marqeta`) associated with this cardholder
+          items:
+            $ref: '#/components/schemas/ExternalIntegration.v1'
+        created_at:
+          $ref: '#/components/schemas/Timestamp.v1'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp.v1'
+    CreateCardholderRequest.v1:
+      title: CreateCardholderRequest
+      type: object
+      description: A `Cardholder` object represents an individual or business entity who is issued cards.
+      allOf:
+        - $ref: '#/components/schemas/CardholderBase.v1'
+      required:
+        - name
+        - email
+        - phone_number
+        - billing
+        - individual
+        - status
+        - type
+        - spending_controls
+    UpdateCardholderRequest.v1:
+      title: UpdateCardholderRequest
+      type: object
+      description: A `Cardholder` object represents an individual or business entity who is issued cards.
+      allOf:
+        - $ref: '#/components/schemas/CardholderBase.v1'
+  responses:
+    500InternalServerError.v1:
+      description: Internal error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails.v1'
+    400BadRequest.v1:
+      description: Bad Request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails.v1'
+          example:
+            type: https://api.onne.place/messages/v1/400
+            title: Invalid parameters informed
+            status: 400
+            detail: There was an error processing the parameters received
+            instance: https://api.onne.place/errors/v1/de283d1c-2d64-4c61-a3b5-896bfac999dd
+      headers:
+        RateLimit-Limit:
+          $ref: '#/components/headers/RateLimit-Limit.v1'
+        RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimit-Remaining.v1'
+        RateLimit-Reset:
+          $ref: '#/components/headers/RateLimit-Reset.v1'
+    401Unauthorized.v1:
+      description: Unauthorized
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails.v1'
+          example:
+            type: https://api.onne.place/messages/v1/401
+            title: The user was not recognized
+            status: 401
+            detail: There was an error identifying the user
+            instance: https://api.onne.place/errors/v1/de283d1c-2d64-4c61-a3b5-896bfac999dd
+      headers:
+        RateLimit-Limit:
+          $ref: '#/components/headers/RateLimit-Limit.v1'
+        RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimit-Remaining.v1'
+        RateLimit-Reset:
+          $ref: '#/components/headers/RateLimit-Reset.v1'
+    403Forbidden.v1:
+      description: Forbidden
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails.v1'
+          example:
+            type: https://api.onne.place/messages/v1/403
+            title: User not authorized
+            status: 403
+            detail: The informed user is not authorized to access this resource
+            instance: https://api.onne.place/errors/v1/de283d1c-2d64-4c61-a3b5-896bfac999dd
+      headers:
+        RateLimit-Limit:
+          $ref: '#/components/headers/RateLimit-Limit.v1'
+        RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimit-Remaining.v1'
+        RateLimit-Reset:
+          $ref: '#/components/headers/RateLimit-Reset.v1'
+    404NotFound.v1:
+      description: Not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails.v1'
+          example:
+            type: https://api.onne.place/messages/v1/404
+            title: Requested resource not found
+            status: 404
+            detail: The requested resource was not found
+            instance: https://api.onne.place/errors/v1/de283d1c-2d64-4c61-a3b5-896bfac999dd
+      headers:
+        RateLimit-Limit:
+          $ref: '#/components/headers/RateLimit-Limit.v1'
+        RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimit-Remaining.v1'
+        RateLimit-Reset:
+          $ref: '#/components/headers/RateLimit-Reset.v1'
+    406NotAcceptable.v1:
+      description: Not acceptable
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails.v1'
+          example:
+            type: https://api.onne.place/messages/v1/406
+            title: Requested resource was not acceptable
+            status: 406
+            detail: The requested resource does not have a current representation that would be acceptable to the user agent, according to the proactive negotiation header fields received in the request and the server is unwilling to supply a default representation"
+            instance: https://api.onne.place/errors/v1/ca2a1d1c-2d64-4c61-a3b5-896bfac999dd
+      headers:
+        RateLimit-Limit:
+          $ref: '#/components/headers/RateLimit-Limit.v1'
+        RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimit-Remaining.v1'
+        RateLimit-Reset:
+          $ref: '#/components/headers/RateLimit-Reset.v1'
+    429TooManyRequests.v1:
+      description: Too many requests
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails.v1'
+          example:
+            type: https://api.onne.place/messages/v1/429
+            title: Too many requests
+            status: 429
+            detail: The same origin made more requests than authorized
+            instance: https://api.onne.place/errors/v1/de283d1c-2d64-4c61-a3b5-896bfac999dd
+      headers:
+        RateLimit-Limit:
+          $ref: '#/components/headers/RateLimit-Limit.v1'
+        RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimit-Remaining.v1'
+        RateLimit-Reset:
+          $ref: '#/components/headers/RateLimit-Reset.v1'
+        Retry-After:
+          $ref: '#/components/headers/Retry-After.v1'
+    409Conflict.v1:
+      description: Conflict
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails.v1'
+          example:
+            type: https://api.onne.place/messages/v1/409
+            title: A request is outstanding for this Idempotency-Key
+            status: 409
+            detail: A request with the same Idempotency-Key for the same operation is being processed or is outstanding
+            instance: https://api.onne.place/errors/v1/de283d1c-2d64-4c61-a3b5-896bfac999dd
+      headers:
+        RateLimit-Limit:
+          $ref: '#/components/headers/RateLimit-Limit.v1'
+        RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimit-Remaining.v1'
+        RateLimit-Reset:
+          $ref: '#/components/headers/RateLimit-Reset.v1'
+    415UnsupportedMediaType.v1:
+      description: Unsupported Media Type
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails.v1'
+          example:
+            type: https://api.onne.place/messages/v1/415
+            title: Unsupported Media Type
+            status: 415
+            detail: The request entity has a media type which the server or resource does not support.
+            instance: https://api.onne.place/errors/v1/af3d1c-2d64-4c61-a3b5-896bfac999dd
+      headers:
+        RateLimit-Limit:
+          $ref: '#/components/headers/RateLimit-Limit.v1'
+        RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimit-Remaining.v1'
+        RateLimit-Reset:
+          $ref: '#/components/headers/RateLimit-Reset.v1'
+  headers:
+    RateLimit-Limit.v1:
+      description: Request limit per minute.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 2147483647
+        example: 200
+    RateLimit-Remaining.v1:
+      description: The number of requests left for the time window.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 2147483647
+        example: 20
+    RateLimit-Reset.v1:
+      description: The UTC date/time at which the current rate limit window resets.
+      schema:
+        type: string
+        format: date-time
+        minLength: 20
+        maxLength: 28
+        example: '2023-05-23T21:08:41.166Z'
+    Retry-After.v1:
+      description: The UTC date/time at which this request should be retried.
+      schema:
+        type: string
+        format: date-time
+        minLength: 20
+        maxLength: 28
+        example: '2023-05-23T21:08:41.166Z'
+  parameters:
+    Skip.v1:
+      name: skip
+      required: false
+      description: Number of items to skip at the beginning of the list
+      in: query
+      schema:
+        title: Skip
+        type: integer
+        format: int32
+        minimum: 0
+        maximum: 1000000
+        default: 0
+        example: 10
+    Limit.v1:
+      name: Limit
+      required: false
+      description: Maximum number of items to be returned at the same time
+      in: query
+      schema:
+        title: Limit
+        type: integer
+        format: int32
+        minimum: 0
+        maximum: 100
+        example: 100
+    SortOrder.v1:
+      name: sort_order
+      description: Order of the items listed
+      in: query
+      schema:
+        title: SortOrder
+        type: string
+        enum:
+          - asc
+          - desc
+        default: desc
+        example: desc
+    CreatedAt.v1:
+      name: created_at
+      in: query
+      required: false
+      explode: true
+      style: deepObject
+      description: Date and time in ISO 8601 format (YYYY-MM-DDThh:mm:ss.sssZ). You can use the `gt` and `lt` operators to limit the date range. To filter for inclusive bounds, use `gte` and `lte`.
+      examples:
+        example1:
+          summary: Created between January 1st and January 31st, 2022 (exclusive bounds)
+          value:
+            gt: '2022-01-01T00:00:00.000Z'
+            lte: '2022-01-31T23:59:59.999Z'
+        example2:
+          summary: Created between January 1st and January 31st, 2022 (inclusive bounds)
+          value:
+            gte: '2022-01-01T00:00:00.000Z'
+            lt: '2022-01-31T23:59:59.999Z'
+        example3:
+          summary: Created on January 1st, 2022
+          value:
+            gte: '2022-01-01T00:00:00.000Z'
+            lte: '2022-01-01T23:59:59.999Z'
+      schema:
+        title: CreatedAt
+        type: object
+        description: |
+          Only return objects that were created during the given date interval. You can provide a range using `gt`, `gte`, `lt`, and `lte. Date and time in ISO 8601 format (YYYY-MM-DDThh:mm:ss.sssZ).
+        properties:
+          gt:
+            type: string
+            format: date-time
+            description: Minimum datetime to filter by (exclusive). Date and time in ISO 8601 format (YYYY-MM-DDThh:mm:ss.sssZ).
+            minLength: 20
+            maxLength: 29
+            example: '2022-01-01T00:00:00.000Z'
+          gte:
+            type: string
+            format: date-time
+            description: Minimum datetime to filter by (inclusive). Date and time in ISO 8601 format (YYYY-MM-DDThh:mm:ss.sssZ).
+            minLength: 20
+            maxLength: 29
+            example: '2022-01-01T00:00:00.000Z'
+          lt:
+            type: string
+            format: date-time
+            description: Maximum datetime to filter by (exclusive).Date and time in ISO 8601 format (YYYY-MM-DDThh:mm:ss.sssZ).
+            minLength: 20
+            maxLength: 29
+            example: '2022-01-01T00:00:00.000Z'
+          lte:
+            type: string
+            format: date-time
+            description: Maximum datetime to filter by (inclusive). Date and time in ISO 8601 format (YYYY-MM-DDThh:mm:ss.sssZ).
+            minLength: 20
+            maxLength: 29
+            example: '2022-01-01T00:00:00.000Z'
